@@ -9,7 +9,8 @@ export async function listAccounts(manager: CopilotAccountManager): Promise<stri
   return accounts
     .map((account, index) => {
       const status = account.enabled ? 'enabled' : 'disabled';
-      return `${index + 1}. ${account.label} (${account.host}) [${status}] id=${account.id}`;
+      const shortId = account.id.slice(0, 6);
+      return `${index + 1}. ${account.label} (${account.host}) [${status}] id=${account.id} short=${shortId}`;
     })
     .join('\n');
 }

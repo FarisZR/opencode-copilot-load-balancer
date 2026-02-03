@@ -70,7 +70,22 @@ export function createDeviceFlowMethod({ manager }: MethodDeps) {
   return {
     type: 'oauth' as const,
     label: 'Login with GitHub Copilot (GitHub.com)',
-    async authorize() {
+    prompts: [
+      {
+        type: 'text',
+        key: 'label',
+        message: 'Account label (e.g., personal, work)',
+        placeholder: 'personal',
+        validate: (value: string) => {
+          if (!value) return 'Label is required';
+          if (!value.trim()) return 'Label cannot be blank';
+          return undefined;
+        },
+      },
+    ],
+    async authorize(inputs = {}) {
+      const labelInput = (inputs as { label?: string }).label;
+      const label = labelInput && labelInput.trim() ? labelInput.trim() : 'github.com';
       const urls = getUrls('github.com');
       const deviceResponse = await fetch(urls.deviceCodeUrl, {
         method: 'POST',
@@ -109,7 +124,7 @@ export function createDeviceFlowMethod({ manager }: MethodDeps) {
           if (result.type !== 'success') return result;
 
           await manager.addAccount({
-            label: 'github.com',
+            label,
             host: 'github.com',
             refresh: result.refresh,
             access: result.access,

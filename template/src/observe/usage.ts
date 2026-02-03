@@ -40,9 +40,15 @@ export function createUsageNotifier(
   return {
     async accountSelected(account, modelId, reason) {
       if (config.visibility.log) {
-        log.info('account selected', { label: account.label, modelId, reason });
+        log.info('account selected', {
+          label: account.label,
+          id: account.id,
+          modelId,
+          reason,
+        });
       }
-      await maybeToast(`Copilot: ${account.label} (${modelId})`);
+      const shortId = account.id.slice(0, 6);
+      await maybeToast(`Copilot: ${account.label}#${shortId} (${modelId})`);
     },
   };
 }

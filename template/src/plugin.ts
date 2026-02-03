@@ -17,14 +17,14 @@ export async function CopilotMultiAccountPlugin(input: PluginInput): Promise<Hoo
 
   return {
     tool: {
-      'copilot.accounts.list': tool({
+      'copilot-accounts-list': tool({
         description: 'List configured Copilot accounts',
         args: {},
         async execute() {
           return listAccounts(manager);
         },
       }),
-      'copilot.accounts.disable': tool({
+      'copilot-accounts-disable': tool({
         description: 'Disable a Copilot account by id',
         args: {
           id: tool.schema.string(),
@@ -33,7 +33,7 @@ export async function CopilotMultiAccountPlugin(input: PluginInput): Promise<Hoo
           return disableAccount(manager, args.id);
         },
       }),
-      'copilot.accounts.enable': tool({
+      'copilot-accounts-enable': tool({
         description: 'Enable a Copilot account by id',
         args: {
           id: tool.schema.string(),
