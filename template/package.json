@@ -1,10 +1,10 @@
 {
-  "name": "{{moduleName}}",
+  "name": "opencode-copilot-multi-auth",
   "version": "0.1.0",
-  "description": "{{description}}",
+  "description": "OpenCode plugin for multi-account GitHub Copilot load balancing",
   "author": {
-    "name": "{{authorName}}",
-    "email": "{{authorEmail}}"
+    "name": "opencode",
+    "email": "support@opencode.ai"
   },
   "type": "module",
   "exports": {
@@ -15,7 +15,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "{{repositoryUrl}}"
+    "url": "https://github.com/opencode-ai/opencode-copilot-multi-auth"
   },
   "publishConfig": {
     "access": "public",
@@ -23,8 +23,14 @@
   },
   "files": [
     "dist",
-    "src/version.ts"
+    "docs"
   ],
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir dist --target bun",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^20.11.5",
@@ -35,7 +41,13 @@
     "eslint-config-prettier": "10.1.8",
     "eslint-plugin-prettier": "^5.1.3",
     "prettier": "^3.2.4",
+    "typescript": "^5.0.0",
     "typescript-eslint": "^8.47.0",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^0.15.30",
+    "@opencode-ai/sdk": "^0.15.30",
+    "zod": "^4.0.0"
   }
 }

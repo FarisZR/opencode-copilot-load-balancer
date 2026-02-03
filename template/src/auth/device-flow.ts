@@ -1,0 +1,205 @@
+import { CopilotAccountManager } from '../accounts/manager.ts';
+import { COPILOT_CLIENT_ID } from './constants.ts';
+const CLIENT_ID = COPILOT_CLIENT_ID;
+const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000;
+
+function normalizeDomain(url: string) {
+  return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+function getUrls(domain: string) {
+  return {
+    deviceCodeUrl: `https://${domain}/login/device/code`,
+    accessTokenUrl: `https://${domain}/login/oauth/access_token`,
+  };
+}
+
+async function pollAccessToken(url: string, deviceCode: string, interval: number) {
+  while (true) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        client_id: CLIENT_ID,
+        device_code: deviceCode,
+        grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      }),
+    });
+
+    if (!response.ok) return { type: 'failed' as const };
+    const data = (await response.json()) as {
+      access_token?: string;
+      error?: string;
+      interval?: number;
+    };
+
+    if (data.access_token) {
+      return {
+        type: 'success' as const,
+        refresh: data.access_token,
+        access: data.access_token,
+        expires: 0,
+      };
+    }
+
+    if (data.error === 'authorization_pending') {
+      await Bun.sleep(interval * 1000 + OAUTH_POLLING_SAFETY_MARGIN_MS);
+      continue;
+    }
+
+    if (data.error === 'slow_down') {
+      const nextInterval = data.interval ? data.interval * 1000 : (interval + 5) * 1000;
+      await Bun.sleep(nextInterval + OAUTH_POLLING_SAFETY_MARGIN_MS);
+      continue;
+    }
+
+    if (data.error) return { type: 'failed' as const };
+
+    await Bun.sleep(interval * 1000 + OAUTH_POLLING_SAFETY_MARGIN_MS);
+  }
+}
+
+type MethodDeps = {
+  manager: CopilotAccountManager;
+};
+
+export function createDeviceFlowMethod({ manager }: MethodDeps) {
+  return {
+    type: 'oauth' as const,
+    label: 'Login with GitHub Copilot (GitHub.com)',
+    async authorize() {
+      const urls = getUrls('github.com');
+      const deviceResponse = await fetch(urls.deviceCodeUrl, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          client_id: CLIENT_ID,
+          scope: 'read:user',
+        }),
+      });
+
+      if (!deviceResponse.ok) {
+        throw new Error('Failed to initiate device authorization');
+      }
+
+      const deviceData = (await deviceResponse.json()) as {
+        verification_uri: string;
+        user_code: string;
+        device_code: string;
+        interval: number;
+      };
+
+      return {
+        url: deviceData.verification_uri,
+        instructions: `Enter code: ${deviceData.user_code}`,
+        method: 'auto' as const,
+        async callback() {
+          const result = await pollAccessToken(
+            urls.accessTokenUrl,
+            deviceData.device_code,
+            deviceData.interval,
+          );
+
+          if (result.type !== 'success') return result;
+
+          await manager.addAccount({
+            label: 'github.com',
+            host: 'github.com',
+            refresh: result.refresh,
+            access: result.access,
+            expires: result.expires,
+          });
+
+          return result;
+        },
+      };
+    },
+  };
+}
+
+export function createEnterpriseFlowMethod({ manager }: MethodDeps) {
+  return {
+    type: 'oauth' as const,
+    label: 'Login with GitHub Copilot (Enterprise)',
+    prompts: [
+      {
+        type: 'text',
+        key: 'enterpriseUrl',
+        message: 'Enter your GitHub Enterprise URL or domain',
+        placeholder: 'company.ghe.com or https://company.ghe.com',
+        validate: (value: string) => {
+          if (!value) return 'URL or domain is required';
+          try {
+            const url = value.includes('://') ? new URL(value) : new URL(`https://${value}`);
+            if (!url.hostname) return 'Please enter a valid URL or domain';
+            return undefined;
+          } catch {
+            return 'Please enter a valid URL (e.g., company.ghe.com or https://company.ghe.com)';
+          }
+        },
+      },
+    ],
+    async authorize(inputs = {}) {
+      const enterpriseUrl = (inputs as { enterpriseUrl?: string }).enterpriseUrl;
+      const domain = normalizeDomain(String(enterpriseUrl));
+      const urls = getUrls(domain);
+      const deviceResponse = await fetch(urls.deviceCodeUrl, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          client_id: CLIENT_ID,
+          scope: 'read:user',
+        }),
+      });
+
+      if (!deviceResponse.ok) {
+        throw new Error('Failed to initiate device authorization');
+      }
+
+      const deviceData = (await deviceResponse.json()) as {
+        verification_uri: string;
+        user_code: string;
+        device_code: string;
+        interval: number;
+      };
+
+      return {
+        url: deviceData.verification_uri,
+        instructions: `Enter code: ${deviceData.user_code}`,
+        method: 'auto' as const,
+        async callback() {
+          const result = await pollAccessToken(
+            urls.accessTokenUrl,
+            deviceData.device_code,
+            deviceData.interval,
+          );
+
+          if (result.type !== 'success') return result;
+
+          await manager.addAccount({
+            label: domain,
+            host: domain,
+            refresh: result.refresh,
+            access: result.access,
+            expires: result.expires,
+          });
+
+          return {
+            ...result,
+            provider: 'github-copilot-enterprise',
+            enterpriseUrl: domain,
+          } as const;
+        },
+      };
+    },
+  };
+}

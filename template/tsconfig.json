@@ -8,6 +8,8 @@
     "noEmit": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
-    "types": ["bun-types"]
+    "types": ["bun-types"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
   }
 }
