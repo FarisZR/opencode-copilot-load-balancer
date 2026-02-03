@@ -171,7 +171,7 @@ export class CopilotAccountManager {
 
     if (this.config.strategy === 'hybrid') {
       const scored = eligible.map((account, index) => {
-        const score = (account.consecutiveFailures ?? 0) * -10 + (account.lastUsed ?? 0);
+        const score = (account.consecutiveFailures ?? 0) * -10 - (account.lastUsed ?? 0);
         return { index, account, score };
       });
       scored.sort((a, b) => b.score - a.score);

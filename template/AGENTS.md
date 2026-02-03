@@ -60,6 +60,8 @@
 
 ## Project Context
 
-- **Type**: ES Module package for Bun modules
+- **Type**: OpenCode Auth Plugin
 - **Target**: Bun runtime, ES2021+
-- **Purpose**: General-purpose Bun module development
+- **Purpose**: Multi-account GitHub Copilot load balancing with support for GitHub.com and Enterprise hosts.
+- **Key Features**: LRU-based account rotation, model availability caching, and TUI-integrated observability.
+- **Tools**: Registers `copilot-accounts-list`, `copilot-accounts-disable`, and `copilot-accounts-enable`.

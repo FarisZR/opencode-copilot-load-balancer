@@ -151,7 +151,9 @@ export function createCopilotFetch({ config, manager, notifier }: FetchDeps) {
       }
     }
 
-    await manager.notifySelection(selection, modelId);
+    if (parsed.isAgent) {
+      await manager.notifySelection(selection, modelId);
+    }
     const headers = buildHeaders(init?.headers, selection.account.access, parsed);
 
     const response = await fetch(request, {

@@ -19,7 +19,20 @@ Create `~/.config/opencode/copilot-multi.json` (or `.opencode/copilot-multi.json
 }
 ```
 
-## Options
+## Management Tools
+
+The plugin registers the following OpenCode tools for managing your accounts:
+
+- `copilot-accounts-list`: List all accounts, their status, labels, and IDs.
+- `copilot-accounts-disable`: Disable an account by ID (e.g., if you want to temporarily stop using one).
+- `copilot-accounts-enable`: Re-enable a previously disabled account.
+
+Usage:
+```bash
+opencode tool call copilot-accounts-list
+opencode tool call copilot-accounts-disable --id <account-id>
+```
+
 
 ### `strategy`
 

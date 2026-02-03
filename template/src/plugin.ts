@@ -1,5 +1,5 @@
 import type { Hooks, PluginInput } from '@opencode-ai/plugin';
-import { setLoggerSilent } from './utils/logging.ts';
+import { initLogger, setLoggerSilent } from './utils/logging.ts';
 import { loadConfig } from './config/load.ts';
 import { CopilotAccountManager } from './accounts/manager.ts';
 import { createCopilotFetch } from './fetch/copilot-fetch.ts';
@@ -11,6 +11,7 @@ import { createUsageNotifier } from './observe/usage.ts';
 
 export async function CopilotMultiAccountPlugin(input: PluginInput): Promise<Hooks> {
   const config = await loadConfig(input.directory);
+  initLogger(input.client);
   setLoggerSilent(!config.visibility.log);
   const notifier = createUsageNotifier(input.client, config);
   const manager = await CopilotAccountManager.load(config, notifier);
