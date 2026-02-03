@@ -27,6 +27,12 @@ mise run build
 }
 ```
 
+Or drop the built plugin into your `.opencode/plugin/` directory:
+
+```bash
+cp /absolute/path/to/template/dist/index.js /path/to/project/.opencode/plugin/opencode-copilot-multi-auth.js
+```
+
 ## Usage
 
 1. Login to GitHub Copilot (GitHub.com):

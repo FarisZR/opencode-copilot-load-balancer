@@ -49,6 +49,16 @@ How long to cache model availability per account (milliseconds). Defaults to 24 
 
 Optional path override for where accounts are stored.
 
+## Plugin Installation
+
+Option A: use OpenCode config `plugin` array with a `file://` URL.
+
+Option B: drop the built plugin file into `.opencode/plugin/`:
+
+```bash
+cp /absolute/path/to/template/dist/index.js /path/to/project/.opencode/plugin/opencode-copilot-multi-auth.js
+```
+
 ## Account Storage
 
 Accounts are stored in:
