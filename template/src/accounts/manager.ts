@@ -57,6 +57,20 @@ export class CopilotAccountManager {
     await this.persist();
   }
 
+  async seedFromAuth(getAuth: () => Promise<AuthInfo | null>) {
+    if (this.accounts.length > 0) return;
+    const auth = await getAuth();
+    if (!auth || auth.type !== 'oauth') return;
+    const host = auth.enterpriseUrl ? auth.enterpriseUrl : 'github.com';
+    await this.addAccount({
+      label: host,
+      host,
+      refresh: auth.refresh,
+      access: auth.access,
+      expires: auth.expires,
+    });
+  }
+
   listAccounts() {
     return [...this.accounts];
   }

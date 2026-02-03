@@ -46,6 +46,7 @@ export async function CopilotMultiAccountPlugin(input: PluginInput): Promise<Hoo
     auth: {
       provider: 'github-copilot',
       async loader(getAuth, provider) {
+        await manager.seedFromAuth(getAuth as () => Promise<any>);
         await ensureProviderAuth(input.client, manager);
         const info = await manager.getActiveAuth(getAuth as () => Promise<any>);
         if (!info) return {};
