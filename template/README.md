@@ -41,7 +41,7 @@ cp /absolute/path/to/template/dist/index.js /path/to/project/.opencode/plugin/op
 opencode auth login
 ```
 
-Select "Login with GitHub Copilot (GitHub.com)".
+Select "Login with GitHub Copilot (GitHub.com)". You will be prompted for an **Account label** (e.g., `personal` or `work`). Use distinct labels when adding multiple accounts.
 
 2. Login to GitHub Copilot (Enterprise) to add another account:
 
@@ -89,6 +89,17 @@ See `template/docs/CONFIGURATION.md` for details.
 - `mise run lint:fix` - Fix linting issues
 - `mise run format` - Format code with Prettier
 
-## License
+### Managing Accounts
+
+Use the included CLI tools to manage your accounts:
+
+- `copilot-accounts-list`: Show all configured accounts, their status, and IDs.
+- `copilot-accounts-disable --id <id>`: Disable an account.
+- `copilot-accounts-enable --id <id>`: Re-enable an account.
+
+### Multiple Accounts
+
+You can add multiple GitHub.com accounts by running `opencode auth login` multiple times and providing a unique label for each (e.g., `personal`, `work`). The plugin will balance requests across all enabled accounts that support the requested model.
+
 
 MIT License. See the [LICENSE](LICENSE) file for details.
