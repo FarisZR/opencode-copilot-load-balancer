@@ -125,7 +125,7 @@ export async function promptManageMenu(accounts: LoginMenuAccount[]): Promise<Ma
 
     while (true) {
       const answer = await rl.question(
-        'Select account number, (a)ll to remove all, or press enter to go back: '
+        'Select account number, (a)ll to remove all, or press enter to exit: '
       );
       const normalized = answer.trim().toLowerCase();
       if (!normalized) return { type: 'back' };
