@@ -5,8 +5,6 @@ import { CopilotAccountManager } from './accounts/manager.ts';
 import { createCopilotFetch } from './fetch/copilot-fetch.ts';
 import { createDeviceFlowMethod, createEnterpriseFlowMethod } from './auth/device-flow.ts';
 import { ensureProviderAuth } from './auth/opencode-auth.ts';
-import { tool } from '@opencode-ai/plugin';
-import { listAccounts, disableAccount, enableAccount } from './auth/cli.ts';
 import { createUsageNotifier } from './observe/usage.ts';
 
 export async function CopilotMultiAccountPlugin(input: PluginInput): Promise<Hooks> {
@@ -17,39 +15,15 @@ export async function CopilotMultiAccountPlugin(input: PluginInput): Promise<Hoo
   const manager = await CopilotAccountManager.load(config, notifier);
 
   return {
-    tool: {
-      'copilot-accounts-list': tool({
-        description: 'List configured Copilot accounts',
-        args: {},
-        async execute() {
-          return listAccounts(manager);
-        },
-      }),
-      'copilot-accounts-disable': tool({
-        description: 'Disable a Copilot account by id',
-        args: {
-          id: tool.schema.string(),
-        },
-        async execute(args) {
-          return disableAccount(manager, args.id);
-        },
-      }),
-      'copilot-accounts-enable': tool({
-        description: 'Enable a Copilot account by id',
-        args: {
-          id: tool.schema.string(),
-        },
-        async execute(args) {
-          return enableAccount(manager, args.id);
-        },
-      }),
-    },
     auth: {
       provider: 'github-copilot',
       async loader(getAuth, provider) {
-        await manager.seedFromAuth(getAuth as () => Promise<any>);
+        const resolveAuth = getAuth as () => Promise<
+          import('./accounts/manager.ts').AuthInfo | null
+        >;
+        await manager.seedFromAuth(resolveAuth);
         await ensureProviderAuth(input.client, manager);
-        const info = await manager.getActiveAuth(getAuth as () => Promise<any>);
+        const info = await manager.getActiveAuth(resolveAuth);
         if (!info) return {};
 
         if (provider && provider.models) {
@@ -76,10 +50,7 @@ export async function CopilotMultiAccountPlugin(input: PluginInput): Promise<Hoo
           }),
         };
       },
-      methods: [
-        createDeviceFlowMethod({ manager }),
-        createEnterpriseFlowMethod({ manager }),
-      ],
+      methods: [createDeviceFlowMethod({ manager }), createEnterpriseFlowMethod({ manager })],
     },
   };
 }

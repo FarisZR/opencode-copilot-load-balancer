@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { CopilotMultiConfig } from '../config/load.ts';
 import type { CopilotAccount, AccountSelection } from './types.ts';
-import { loadStore, saveStore } from './storage.ts';
+import { loadStoreWithMetadata, saveStore } from './storage.ts';
 import { noop } from '../utils/noop.ts';
 import type { UsageNotifier } from '../observe/usage.ts';
 import { ModelAvailabilityCache } from '../models/availability.ts';
@@ -21,25 +21,34 @@ export class CopilotAccountManager {
   private lastIndex = 0;
   private lastIndexByHost: Record<string, number> = {};
   private lastUsed?: CopilotAccount;
+  private storeExists = false;
 
   private readonly availability: ModelAvailabilityCache;
 
   private constructor(
     private readonly config: CopilotMultiConfig,
-    private readonly _notifier: UsageNotifier,
+    private readonly _notifier: UsageNotifier
   ) {
     this.availability = new ModelAvailabilityCache(config);
   }
 
   static async load(config: CopilotMultiConfig, notifier: UsageNotifier) {
     const manager = new CopilotAccountManager(config, notifier);
-    const store =
-      config.accountsPath === 'memory'
-        ? { version: 1, accounts: [], lastIndex: 0, lastIndexByHost: {} }
-        : await loadStore(config.accountsPath);
+    if (config.accountsPath === 'memory') {
+      manager.accounts = [];
+      manager.lastIndex = 0;
+      manager.lastIndexByHost = {};
+      manager.storeExists = false;
+      return manager;
+    }
+    const { store, exists } = await loadStoreWithMetadata(config.accountsPath);
     manager.accounts = store.accounts;
     manager.lastIndex = store.lastIndex;
     manager.lastIndexByHost = store.lastIndexByHost;
+    manager.storeExists = exists;
+    if (!exists) {
+      manager.accounts = [];
+    }
     return manager;
   }
 
@@ -52,6 +61,7 @@ export class CopilotAccountManager {
       ...input,
       id: randomUUID(),
       enabled: input.enabled ?? true,
+      lastUsed: input.lastUsed ?? Date.now(),
     };
     this.accounts.push(account);
     await this.persist();
@@ -59,6 +69,7 @@ export class CopilotAccountManager {
 
   async seedFromAuth(getAuth: () => Promise<AuthInfo | null>) {
     if (this.accounts.length > 0) return;
+    if (this.storeExists) return;
     const auth = await getAuth();
     if (!auth || auth.type !== 'oauth') return;
     const host = auth.enterpriseUrl ? auth.enterpriseUrl : 'github.com';
@@ -86,6 +97,13 @@ export class CopilotAccountManager {
     const account = this.accounts.find((item) => item.id === id);
     if (!account) return;
     account.enabled = true;
+    await this.persist();
+  }
+
+  async removeAccount(id: string) {
+    const index = this.accounts.findIndex((item) => item.id === id);
+    if (index < 0) return;
+    this.accounts.splice(index, 1);
     await this.persist();
   }
 
@@ -134,6 +152,8 @@ export class CopilotAccountManager {
   }
 
   async getActiveAuth(getAuth: () => Promise<AuthInfo | null>): Promise<AuthInfo | null> {
+    const hasEnabled = this.accounts.some((account) => account.enabled);
+    if (!hasEnabled) return null;
     const auth = await getAuth();
     if (!auth || auth.type !== 'oauth') return null;
     return {
@@ -207,7 +227,8 @@ export class CopilotAccountManager {
         lastIndex: this.lastIndex,
         lastIndexByHost: this.lastIndexByHost,
       },
-      this.config.accountsPath,
+      this.config.accountsPath
     );
+    this.storeExists = true;
   }
 }

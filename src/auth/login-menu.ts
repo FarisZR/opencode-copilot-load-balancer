@@ -1,0 +1,159 @@
+import { createInterface } from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
+import type { CopilotAccount } from '../accounts/types.ts';
+
+export type AccountStatus = 'active' | 'rate-limited';
+
+export type LoginMenuAction = { type: 'add' } | { type: 'manage' } | { type: 'cancel' };
+
+export type AccountAction = 'back' | 'toggle' | 'remove' | 'cancel';
+
+export type ManageMenuAction =
+  | { type: 'account'; accountId: string }
+  | { type: 'remove-all' }
+  | { type: 'back' };
+
+export type LoginMenuAccount = {
+  id: string;
+  label: string;
+  host: string;
+  enabled: boolean;
+  lastUsed?: number;
+  cooldownUntil?: number;
+};
+
+function formatRelativeTime(timestamp: number | undefined): string {
+  if (!timestamp) return 'never';
+  const days = Math.floor((Date.now() - timestamp) / 86400000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
+
+function getAccountStatus(account: LoginMenuAccount): AccountStatus {
+  if (account.cooldownUntil && account.cooldownUntil > Date.now()) return 'rate-limited';
+  return 'active';
+}
+
+function formatAccountLine(account: LoginMenuAccount, index: number): string {
+  const status = getAccountStatus(account);
+  const disabledTag = account.enabled ? '' : ' [disabled]';
+  const shortId = account.id.slice(0, 6);
+  const lastUsed = account.lastUsed ? ` used ${formatRelativeTime(account.lastUsed)}` : '';
+  return `${index + 1}. ${account.label} (${account.host}) [${status}]${disabledTag} id=${shortId}${lastUsed}`;
+}
+
+export async function promptLoginMenu(accounts: LoginMenuAccount[]): Promise<LoginMenuAction> {
+  const rl = createInterface({ input, output });
+  try {
+    if (accounts.length === 0) {
+      output.write('No accounts configured yet.\n');
+      return { type: 'add' };
+    }
+
+    output.write(`\n${accounts.length} account(s) saved:\n`);
+    accounts.forEach((account, index) => {
+      output.write(`  ${formatAccountLine(account, index)}\n`);
+    });
+    output.write('\n');
+
+    while (true) {
+      const answer = await rl.question(
+        '(s)ign in, (m)anage, (c)ancel? [s/m/c]: ',
+      );
+      const normalized = answer.trim().toLowerCase();
+
+      if (normalized === 's' || normalized === 'sign' || normalized === 'signin') {
+        return { type: 'add' };
+      }
+      if (normalized === 'm' || normalized === 'manage') {
+        return { type: 'manage' };
+      }
+      if (normalized === 'c' || normalized === 'cancel') {
+        return { type: 'cancel' };
+      }
+
+      output.write("Please enter 's', 'm', or 'c'.\n");
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+export async function promptManageMenu(accounts: LoginMenuAccount[]): Promise<ManageMenuAction> {
+  const rl = createInterface({ input, output });
+  try {
+    if (accounts.length === 0) {
+      output.write('No accounts to manage.\n');
+      return { type: 'back' };
+    }
+
+    output.write('\nManage accounts:\n');
+    accounts.forEach((account, index) => {
+      const status = account.enabled ? 'enabled' : 'disabled';
+      const shortId = account.id.slice(0, 6);
+      output.write(
+        `  ${index + 1}. ${account.label} (${account.host}) [${status}] id=${shortId}\n`
+      );
+    });
+    output.write('\n');
+
+    while (true) {
+      const answer = await rl.question(
+        'Select account number, (a)ll to remove all, or press enter to go back: '
+      );
+      const normalized = answer.trim().toLowerCase();
+      if (!normalized) return { type: 'back' };
+      if (normalized === 'a' || normalized === 'all') {
+        return { type: 'remove-all' };
+      }
+      const index = Number.parseInt(normalized, 10);
+      if (!Number.isNaN(index) && index > 0 && index <= accounts.length) {
+        const account = accounts[index - 1];
+        if (account) return { type: 'account', accountId: account.id };
+      }
+      output.write('Invalid account number.\n');
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+export async function promptAccountAction(account: LoginMenuAccount): Promise<AccountAction> {
+  const rl = createInterface({ input, output });
+  try {
+    const shortId = account.id.slice(0, 6);
+    output.write(`\nAccount: ${account.label} (${account.host}) id=${shortId}\n`);
+    const toggleLabel = account.enabled ? 'disable' : 'enable';
+    const toggleKey = toggleLabel[0] ?? 't';
+    while (true) {
+      const answer = await rl.question(`(${toggleLabel}) (r)emove (b)ack? [${toggleKey}/r/b]: `);
+      const normalized = answer.trim().toLowerCase();
+      if (normalized === toggleKey) {
+        return 'toggle';
+      }
+      if (normalized === 'r' || normalized === 'remove') {
+        return 'remove';
+      }
+      if (normalized === 'b' || normalized === 'back') {
+        return 'back';
+      }
+      output.write('Please enter a valid option.\n');
+    }
+  } finally {
+    rl.close();
+  }
+}
+
+export function toMenuAccounts(accounts: CopilotAccount[]): LoginMenuAccount[] {
+  return accounts.map((account) => ({
+    id: account.id,
+    label: account.label,
+    host: account.host,
+    enabled: account.enabled,
+    lastUsed: account.lastUsed,
+    cooldownUntil: account.cooldownUntil,
+  }));
+}
