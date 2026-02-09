@@ -21,15 +21,13 @@ Create `~/.config/opencode/copilot-multi.json` (or `.opencode/copilot-multi.json
 
 ## Account Management
 
-Manage accounts through the `opencode auth login` flow. When Copilot is selected and accounts already exist, the login prompt shows options to sign in, manage accounts, or cancel.
-
-Manage accounts:
+Manage accounts through the `opencode auth login` flow. Select **GitHub Copilot** as the provider, then choose **Manage Accounts** from the list of options.
 
 ```bash
 opencode auth login
 ```
 
-From the menu you can enable/disable accounts or remove accounts. Disabled accounts are excluded from selection.
+From the management menu, you can view account status, toggle accounts (enable/disable), or remove accounts.
 
 ### `strategy`
 

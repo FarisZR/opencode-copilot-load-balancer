@@ -35,23 +35,25 @@ cp /absolute/path/to/template/dist/index.js /path/to/project/.opencode/plugin/op
 
 ## Usage
 
-1. Login to GitHub Copilot (GitHub.com):
+1. **Login**: Run `opencode auth login`.
+2. **Select Provider**: Choose **GitHub Copilot**.
+3. **Choose Action**:
+   - **Login with GitHub Copilot (GitHub.com)**: Add a new personal account.
+   - **Login with GitHub Copilot (Enterprise)**: Add a new enterprise account.
+   - **Manage Accounts**: View, enable, disable, or remove existing accounts.
 
-```bash
-opencode auth login
-```
+### Managing Accounts
 
-Select "Login with GitHub Copilot (GitHub.com)". You will be prompted for an **Account label** (e.g., `personal` or `work`). Use distinct labels when adding multiple accounts.
+Select **Manage Accounts** from the login menu to:
 
-2. Login to GitHub Copilot (Enterprise) to add another account:
+- View all configured accounts with status indicators (active, rate-limited, disabled).
+- Toggle accounts on/off.
+- Remove individual accounts or all accounts.
+- Accounts are color-coded for easy identification (Green: Active/Enabled, Red: Disabled, Yellow: Rate-limited).
 
-```bash
-opencode auth login
-```
+### Multiple Accounts
 
-Select "Login with GitHub Copilot (Enterprise)" and enter your enterprise domain.
-
-3. Send prompts in OpenCode. The plugin will pick an eligible account per request and show which account was used.
+You can add multiple GitHub.com or Enterprise accounts by running `opencode auth login` and selecting the appropriate login method. The plugin will load-balance requests across all enabled accounts that support the requested model.
 
 ## Configuration
 
@@ -74,7 +76,7 @@ Create `~/.config/opencode/copilot-multi.json` or `.opencode/copilot-multi.json`
 }
 ```
 
-See `template/docs/CONFIGURATION.md` for details.
+See `docs/CONFIGURATION.md` for details.
 
 ## Security and Policy Notes
 
@@ -88,18 +90,5 @@ See `template/docs/CONFIGURATION.md` for details.
 - `mise run lint` - Lint code
 - `mise run lint:fix` - Fix linting issues
 - `mise run format` - Format code with Prettier
-
-### Managing Accounts
-
-Use the included CLI tools to manage your accounts:
-
-- `copilot-accounts-list`: Show all configured accounts, their status, and IDs.
-- `copilot-accounts-disable --id <id>`: Disable an account.
-- `copilot-accounts-enable --id <id>`: Re-enable an account.
-
-### Multiple Accounts
-
-You can add multiple GitHub.com accounts by running `opencode auth login` multiple times and providing a unique label for each (e.g., `personal`, `work`). The plugin will balance requests across all enabled accounts that support the requested model.
-
 
 MIT License. See the [LICENSE](LICENSE) file for details.
