@@ -2,6 +2,16 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import type { CopilotAccount } from '../accounts/types.ts';
 
+const ANSI = {
+  cyan: '\x1b[36m',
+  green: '\x1b[32m',
+  red: '\x1b[31m',
+  yellow: '\x1b[33m',
+  dim: '\x1b[2m',
+  bold: '\x1b[1m',
+  reset: '\x1b[0m',
+} as const;
+
 export type AccountStatus = 'active' | 'rate-limited';
 
 export type LoginMenuAction = { type: 'add' } | { type: 'manage' } | { type: 'cancel' };
@@ -22,6 +32,15 @@ export type LoginMenuAccount = {
   cooldownUntil?: number;
 };
 
+function supportsColor(): boolean {
+  return Boolean(output.isTTY) && !process.env.NO_COLOR;
+}
+
+function colorize(text: string, color: string): string {
+  if (!supportsColor()) return text;
+  return `${color}${text}${ANSI.reset}`;
+}
+
 function formatRelativeTime(timestamp: number | undefined): string {
   if (!timestamp) return 'never';
   const days = Math.floor((Date.now() - timestamp) / 86400000);
@@ -39,30 +58,33 @@ function getAccountStatus(account: LoginMenuAccount): AccountStatus {
 
 function formatAccountLine(account: LoginMenuAccount, index: number): string {
   const status = getAccountStatus(account);
-  const disabledTag = account.enabled ? '' : ' [disabled]';
+  const statusTag =
+    status === 'active'
+      ? colorize('[active]', ANSI.green)
+      : colorize('[rate-limited]', ANSI.yellow);
+  const disabledTag = account.enabled ? '' : ` ${colorize('[disabled]', ANSI.red)}`;
   const shortId = account.id.slice(0, 6);
   const lastUsed = account.lastUsed ? ` used ${formatRelativeTime(account.lastUsed)}` : '';
-  return `${index + 1}. ${account.label} (${account.host}) [${status}]${disabledTag} id=${shortId}${lastUsed}`;
+  const idTag = colorize(`id=${shortId}`, ANSI.dim);
+  return `${index + 1}. ${account.label} (${account.host}) ${statusTag}${disabledTag} ${idTag}${lastUsed}`;
 }
 
 export async function promptLoginMenu(accounts: LoginMenuAccount[]): Promise<LoginMenuAction> {
   const rl = createInterface({ input, output });
   try {
     if (accounts.length === 0) {
-      output.write('No accounts configured yet.\n');
+      output.write(`${colorize('No accounts configured yet.', ANSI.yellow)}\n`);
       return { type: 'add' };
     }
 
-    output.write(`\n${accounts.length} account(s) saved:\n`);
+    output.write(`\n${colorize(`${accounts.length} account(s) saved:`, ANSI.bold)}\n`);
     accounts.forEach((account, index) => {
       output.write(`  ${formatAccountLine(account, index)}\n`);
     });
     output.write('\n');
 
     while (true) {
-      const answer = await rl.question(
-        '(s)ign in, (m)anage, (c)ancel? [s/m/c]: ',
-      );
+      const answer = await rl.question('(s)ign in, (m)anage, (c)ancel? [s/m/c]: ');
       const normalized = answer.trim().toLowerCase();
 
       if (normalized === 's' || normalized === 'sign' || normalized === 'signin') {
@@ -75,7 +97,7 @@ export async function promptLoginMenu(accounts: LoginMenuAccount[]): Promise<Log
         return { type: 'cancel' };
       }
 
-      output.write("Please enter 's', 'm', or 'c'.\n");
+      output.write(`${colorize("Please enter 's', 'm', or 'c'.", ANSI.yellow)}\n`);
     }
   } finally {
     rl.close();
@@ -86,17 +108,18 @@ export async function promptManageMenu(accounts: LoginMenuAccount[]): Promise<Ma
   const rl = createInterface({ input, output });
   try {
     if (accounts.length === 0) {
-      output.write('No accounts to manage.\n');
+      output.write(`${colorize('No accounts to manage.', ANSI.yellow)}\n`);
       return { type: 'back' };
     }
 
-    output.write('\nManage accounts:\n');
+    output.write(`\n${colorize('Manage Accounts', ANSI.cyan)}\n`);
     accounts.forEach((account, index) => {
-      const status = account.enabled ? 'enabled' : 'disabled';
+      const status = account.enabled
+        ? colorize('[enabled]', ANSI.green)
+        : colorize('[disabled]', ANSI.red);
       const shortId = account.id.slice(0, 6);
-      output.write(
-        `  ${index + 1}. ${account.label} (${account.host}) [${status}] id=${shortId}\n`
-      );
+      const idTag = colorize(`id=${shortId}`, ANSI.dim);
+      output.write(`  ${index + 1}. ${account.label} (${account.host}) ${status} ${idTag}\n`);
     });
     output.write('\n');
 
@@ -114,7 +137,7 @@ export async function promptManageMenu(accounts: LoginMenuAccount[]): Promise<Ma
         const account = accounts[index - 1];
         if (account) return { type: 'account', accountId: account.id };
       }
-      output.write('Invalid account number.\n');
+      output.write(`${colorize('Invalid account number.', ANSI.yellow)}\n`);
     }
   } finally {
     rl.close();
@@ -125,7 +148,10 @@ export async function promptAccountAction(account: LoginMenuAccount): Promise<Ac
   const rl = createInterface({ input, output });
   try {
     const shortId = account.id.slice(0, 6);
-    output.write(`\nAccount: ${account.label} (${account.host}) id=${shortId}\n`);
+    const idTag = colorize(`id=${shortId}`, ANSI.dim);
+    output.write(
+      `\n${colorize('Account:', ANSI.bold)} ${account.label} (${account.host}) ${idTag}\n`
+    );
     const toggleLabel = account.enabled ? 'disable' : 'enable';
     const toggleKey = toggleLabel[0] ?? 't';
     while (true) {
@@ -140,7 +166,7 @@ export async function promptAccountAction(account: LoginMenuAccount): Promise<Ac
       if (normalized === 'b' || normalized === 'back') {
         return 'back';
       }
-      output.write('Please enter a valid option.\n');
+      output.write(`${colorize('Please enter a valid option.', ANSI.yellow)}\n`);
     }
   } finally {
     rl.close();
