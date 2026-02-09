@@ -46,9 +46,6 @@ export class CopilotAccountManager {
     manager.lastIndex = store.lastIndex;
     manager.lastIndexByHost = store.lastIndexByHost;
     manager.storeExists = exists;
-    if (!exists) {
-      manager.accounts = [];
-    }
     return manager;
   }
 
@@ -104,6 +101,9 @@ export class CopilotAccountManager {
     const index = this.accounts.findIndex((item) => item.id === id);
     if (index < 0) return;
     this.accounts.splice(index, 1);
+    if (this.lastUsed?.id === id) {
+      this.lastUsed = undefined;
+    }
     await this.persist();
   }
 

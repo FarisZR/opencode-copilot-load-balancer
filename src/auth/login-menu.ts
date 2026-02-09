@@ -42,7 +42,7 @@ function colorize(text: string, color: string): string {
 }
 
 function formatRelativeTime(timestamp: number | undefined): string {
-  if (!timestamp) return 'never';
+  if (timestamp == null) return 'never';
   const days = Math.floor((Date.now() - timestamp) / 86400000);
   if (days === 0) return 'today';
   if (days === 1) return 'yesterday';
@@ -157,7 +157,7 @@ export async function promptAccountAction(account: LoginMenuAccount): Promise<Ac
     while (true) {
       const answer = await rl.question(`(${toggleLabel}) (r)emove (b)ack? [${toggleKey}/r/b]: `);
       const normalized = answer.trim().toLowerCase();
-      if (normalized === toggleKey) {
+      if (normalized === toggleKey || normalized === toggleLabel) {
         return 'toggle';
       }
       if (normalized === 'r' || normalized === 'remove') {

@@ -76,11 +76,11 @@ The plugin currently exposes account management tools to agents, which is not de
 
 - Should `opencode auth login` always show the menu when accounts exist, or only when invoked with a flag (e.g., `--manage`)?
 
-Answer: always when selecting github copilot as the provider, the new options should be visible after selecting Github Copilot and then either just sign in or manage, and manage opens the new management list.
+Answer: always when selecting GitHub Copilot as the provider, the new options should be visible after selecting GitHub Copilot and then either just sign in or manage, and manage opens the new management list.
 
 - Should removal/disable of the last enabled account be blocked by default or allowed with a `--force` flag?
 
-Answer:allow it, opencode should then not show any models from github copilot
+Answer: allow it, opencode should then not show any models from GitHub Copilot
 
 - How should duplicates be detected (label+host, refresh token, or user id if available)?
   Answer: just rely on the IDs, but the list should show Label and then a short Id after that as a list.

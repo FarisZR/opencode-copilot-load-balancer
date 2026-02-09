@@ -22,9 +22,12 @@ export async function CopilotMultiAccountPlugin(input: PluginInput): Promise<Hoo
     auth: {
       provider: 'github-copilot',
       async loader(getAuth, provider) {
-        const resolveAuth = getAuth as () => Promise<
-          import('./accounts/manager.ts').AuthInfo | null
-        >;
+        const resolveAuth = async (): Promise<import('./accounts/manager.ts').AuthInfo | null> => {
+          const auth = await getAuth();
+          if (!auth || auth.type !== 'oauth') return null;
+          const oauthAuth = auth as import('./accounts/manager.ts').AuthInfo;
+          return oauthAuth;
+        };
         await manager.seedFromAuth(resolveAuth);
         await ensureProviderAuth(input.client, manager);
         const info = await manager.getActiveAuth(resolveAuth);

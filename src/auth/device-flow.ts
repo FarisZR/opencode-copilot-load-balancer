@@ -15,6 +15,63 @@ function getUrls(domain: string) {
   };
 }
 
+type GitHubIdentity = {
+  userId: string;
+  username: string;
+};
+
+function getUserApiUrl(host: string): string {
+  if (host === 'github.com') return 'https://api.github.com/user';
+  return `https://${host}/api/v3/user`;
+}
+
+async function resolveUserIdentity(
+  host: string,
+  accessToken: string
+): Promise<GitHubIdentity | null> {
+  try {
+    const response = await fetch(getUserApiUrl(host), {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${accessToken}`,
+        'User-Agent': 'opencode-copilot-multi-auth',
+      },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { id?: number; login?: string };
+    if (typeof data.id !== 'number' || !data.login) return null;
+    return {
+      userId: String(data.id),
+      username: data.login,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function findExistingAccount(
+  manager: CopilotAccountManager,
+  host: string,
+  refreshToken: string,
+  identity: GitHubIdentity | null
+) {
+  if (identity) {
+    const matchedByUser = manager.listAccounts().find((account) => {
+      if (account.host !== host) return false;
+      if (account.userId && account.userId === identity.userId) return true;
+      if (account.username && account.username.toLowerCase() === identity.username.toLowerCase()) {
+        return true;
+      }
+      return false;
+    });
+    if (matchedByUser) return matchedByUser;
+  }
+
+  return manager
+    .listAccounts()
+    .find((account) => account.refresh === refreshToken && account.host === host);
+}
+
 async function pollAccessToken(url: string, deviceCode: string, interval: number) {
   while (true) {
     const response = await fetch(url, {
@@ -124,9 +181,8 @@ export function createDeviceFlowMethod({ manager }: MethodDeps) {
 
           if (result.type !== 'success') return result;
 
-          const existing = manager
-            .listAccounts()
-            .find((account) => account.refresh === result.refresh && account.host === 'github.com');
+          const identity = await resolveUserIdentity('github.com', result.access);
+          const existing = findExistingAccount(manager, 'github.com', result.refresh, identity);
           if (existing) {
             await manager.updateAccountTokens(
               existing.id,
@@ -138,6 +194,8 @@ export function createDeviceFlowMethod({ manager }: MethodDeps) {
             await manager.addAccount({
               label,
               host: 'github.com',
+              userId: identity?.userId,
+              username: identity?.username,
               refresh: result.refresh,
               access: result.access,
               expires: result.expires,
@@ -213,9 +271,8 @@ export function createEnterpriseFlowMethod({ manager }: MethodDeps) {
 
           if (result.type !== 'success') return result;
 
-          const existing = manager
-            .listAccounts()
-            .find((account) => account.refresh === result.refresh && account.host === domain);
+          const identity = await resolveUserIdentity(domain, result.access);
+          const existing = findExistingAccount(manager, domain, result.refresh, identity);
           if (existing) {
             await manager.updateAccountTokens(
               existing.id,
@@ -227,6 +284,8 @@ export function createEnterpriseFlowMethod({ manager }: MethodDeps) {
             await manager.addAccount({
               label: domain,
               host: domain,
+              userId: identity?.userId,
+              username: identity?.username,
               refresh: result.refresh,
               access: result.access,
               expires: result.expires,
