@@ -27,4 +27,52 @@ describe('login menu helpers', () => {
       },
     ]);
   });
+
+  it('returns empty list for empty input', () => {
+    expect(toMenuAccounts([])).toEqual([]);
+  });
+
+  it('maps multiple accounts including cooldown and disabled state', () => {
+    const menuAccounts = toMenuAccounts([
+      {
+        id: 'first-account',
+        label: 'personal',
+        host: 'github.com',
+        refresh: 'refresh-1',
+        access: 'access-1',
+        expires: 0,
+        enabled: true,
+        cooldownUntil: 500,
+      },
+      {
+        id: 'second-account',
+        label: 'work',
+        host: 'company.ghe.com',
+        refresh: 'refresh-2',
+        access: 'access-2',
+        expires: 0,
+        enabled: false,
+        lastUsed: 250,
+      },
+    ]);
+
+    expect(menuAccounts).toEqual([
+      {
+        id: 'first-account',
+        label: 'personal',
+        host: 'github.com',
+        enabled: true,
+        lastUsed: undefined,
+        cooldownUntil: 500,
+      },
+      {
+        id: 'second-account',
+        label: 'work',
+        host: 'company.ghe.com',
+        enabled: false,
+        lastUsed: 250,
+        cooldownUntil: undefined,
+      },
+    ]);
+  });
 });
