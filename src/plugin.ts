@@ -3,7 +3,11 @@ import { initLogger, setLoggerSilent } from './utils/logging.ts';
 import { loadConfig } from './config/load.ts';
 import { CopilotAccountManager } from './accounts/manager.ts';
 import { createCopilotFetch } from './fetch/copilot-fetch.ts';
-import { createDeviceFlowMethod, createEnterpriseFlowMethod } from './auth/device-flow.ts';
+import {
+  createDeviceFlowMethod,
+  createEnterpriseFlowMethod,
+  createManageAccountsMethod,
+} from './auth/device-flow.ts';
 import { ensureProviderAuth } from './auth/opencode-auth.ts';
 import { createUsageNotifier } from './observe/usage.ts';
 
@@ -50,7 +54,11 @@ export async function CopilotMultiAccountPlugin(input: PluginInput): Promise<Hoo
           }),
         };
       },
-      methods: [createDeviceFlowMethod({ manager }), createEnterpriseFlowMethod({ manager })],
+      methods: [
+        createDeviceFlowMethod({ manager }),
+        createEnterpriseFlowMethod({ manager }),
+        createManageAccountsMethod({ manager }),
+      ],
     },
   };
 }

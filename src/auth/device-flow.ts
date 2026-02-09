@@ -1,10 +1,5 @@
 import { CopilotAccountManager } from '../accounts/manager.ts';
-import {
-  promptLoginMenu,
-  promptManageMenu,
-  promptAccountAction,
-  toMenuAccounts,
-} from './login-menu.ts';
+import { promptManageMenu, promptAccountAction, toMenuAccounts } from './login-menu.ts';
 import { COPILOT_CLIENT_ID } from './constants.ts';
 const CLIENT_ID = COPILOT_CLIENT_ID;
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000;
@@ -90,17 +85,6 @@ export function createDeviceFlowMethod({ manager }: MethodDeps) {
       },
     ],
     async authorize(inputs = {}) {
-      if (inputs && Object.keys(inputs).length > 0) {
-        const action = await handleLoginMenu(manager);
-        if (action === 'cancel') {
-          return {
-            url: '',
-            instructions: 'Authentication cancelled',
-            method: 'auto' as const,
-            callback: async () => ({ type: 'failed' as const }),
-          };
-        }
-      }
       const labelInput = (inputs as { label?: string }).label;
       const label = labelInput && labelInput.trim() ? labelInput.trim() : 'github.com';
       const urls = getUrls('github.com');
@@ -190,17 +174,6 @@ export function createEnterpriseFlowMethod({ manager }: MethodDeps) {
       },
     ],
     async authorize(inputs = {}) {
-      if (inputs && Object.keys(inputs).length > 0) {
-        const action = await handleLoginMenu(manager);
-        if (action === 'cancel') {
-          return {
-            url: '',
-            instructions: 'Authentication cancelled',
-            method: 'auto' as const,
-            callback: async () => ({ type: 'failed' as const }),
-          };
-        }
-      }
       const enterpriseUrl = (inputs as { enterpriseUrl?: string }).enterpriseUrl;
       const domain = normalizeDomain(String(enterpriseUrl));
       const urls = getUrls(domain);
@@ -271,37 +244,48 @@ export function createEnterpriseFlowMethod({ manager }: MethodDeps) {
   };
 }
 
-async function handleLoginMenu(manager: CopilotAccountManager): Promise<'add' | 'cancel'> {
+export function createManageAccountsMethod({ manager }: MethodDeps) {
+  return {
+    type: 'oauth' as const,
+    label: 'Manage Accounts',
+    async authorize() {
+      await handleManageMenu(manager);
+      return {
+        url: '',
+        instructions: 'Account management complete.',
+        method: 'auto' as const,
+        callback: async () => ({ type: 'failed' as const }),
+      };
+    },
+  };
+}
+
+async function handleManageMenu(manager: CopilotAccountManager): Promise<void> {
   while (true) {
     const accounts = toMenuAccounts(manager.listAccounts());
-    const action = await promptLoginMenu(accounts);
-    if (action.type === 'add') return 'add';
-    if (action.type === 'cancel') return 'cancel';
+    const manageAction = await promptManageMenu(accounts);
+    if (manageAction.type === 'back') return;
+    if (manageAction.type === 'remove-all') {
+      for (const account of accounts) {
+        await manager.removeAccount(account.id);
+      }
+      continue;
+    }
 
-    if (action.type === 'manage') {
-      const manageAction = await promptManageMenu(accounts);
-      if (manageAction.type === 'back') continue;
-      if (manageAction.type === 'remove-all') {
-        for (const account of accounts) {
-          await manager.removeAccount(account.id);
-        }
-        continue;
+    const account = accounts.find((item) => item.id === manageAction.accountId);
+    if (!account) continue;
+
+    const result = await promptAccountAction(account);
+    if (result === 'toggle') {
+      if (account.enabled) {
+        await manager.disableAccount(manageAction.accountId);
+      } else {
+        await manager.enableAccount(manageAction.accountId);
       }
-      const account = accounts.find((item) => item.id === manageAction.accountId);
-      if (!account) continue;
-      const result = await promptAccountAction(account);
-      if (result === 'toggle') {
-        if (account.enabled) {
-          await manager.disableAccount(manageAction.accountId);
-        } else {
-          await manager.enableAccount(manageAction.accountId);
-        }
-        continue;
-      }
-      if (result === 'remove') {
-        await manager.removeAccount(manageAction.accountId);
-        continue;
-      }
+      continue;
+    }
+    if (result === 'remove') {
+      await manager.removeAccount(manageAction.accountId);
       continue;
     }
   }
