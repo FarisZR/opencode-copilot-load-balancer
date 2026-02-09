@@ -1,4 +1,5 @@
 import { CopilotAccountManager } from '../accounts/manager.ts';
+import { promptManageMenu, promptAccountAction, toMenuAccounts } from './login-menu.ts';
 import { COPILOT_CLIENT_ID } from './constants.ts';
 const CLIENT_ID = COPILOT_CLIENT_ID;
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000;
@@ -12,6 +13,63 @@ function getUrls(domain: string) {
     deviceCodeUrl: `https://${domain}/login/device/code`,
     accessTokenUrl: `https://${domain}/login/oauth/access_token`,
   };
+}
+
+type GitHubIdentity = {
+  userId: string;
+  username: string;
+};
+
+function getUserApiUrl(host: string): string {
+  if (host === 'github.com') return 'https://api.github.com/user';
+  return `https://${host}/api/v3/user`;
+}
+
+async function resolveUserIdentity(
+  host: string,
+  accessToken: string
+): Promise<GitHubIdentity | null> {
+  try {
+    const response = await fetch(getUserApiUrl(host), {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${accessToken}`,
+        'User-Agent': 'opencode-copilot-multi-auth',
+      },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { id?: number; login?: string };
+    if (typeof data.id !== 'number' || !data.login) return null;
+    return {
+      userId: String(data.id),
+      username: data.login,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function findExistingAccount(
+  manager: CopilotAccountManager,
+  host: string,
+  refreshToken: string,
+  identity: GitHubIdentity | null
+) {
+  if (identity) {
+    const matchedByUser = manager.listAccounts().find((account) => {
+      if (account.host !== host) return false;
+      if (account.userId && account.userId === identity.userId) return true;
+      if (account.username && account.username.toLowerCase() === identity.username.toLowerCase()) {
+        return true;
+      }
+      return false;
+    });
+    if (matchedByUser) return matchedByUser;
+  }
+
+  return manager
+    .listAccounts()
+    .find((account) => account.refresh === refreshToken && account.host === host);
 }
 
 async function pollAccessToken(url: string, deviceCode: string, interval: number) {
@@ -118,18 +176,31 @@ export function createDeviceFlowMethod({ manager }: MethodDeps) {
           const result = await pollAccessToken(
             urls.accessTokenUrl,
             deviceData.device_code,
-            deviceData.interval,
+            deviceData.interval
           );
 
           if (result.type !== 'success') return result;
 
-          await manager.addAccount({
-            label,
-            host: 'github.com',
-            refresh: result.refresh,
-            access: result.access,
-            expires: result.expires,
-          });
+          const identity = await resolveUserIdentity('github.com', result.access);
+          const existing = findExistingAccount(manager, 'github.com', result.refresh, identity);
+          if (existing) {
+            await manager.updateAccountTokens(
+              existing.id,
+              result.access,
+              result.refresh,
+              result.expires
+            );
+          } else {
+            await manager.addAccount({
+              label,
+              host: 'github.com',
+              userId: identity?.userId,
+              username: identity?.username,
+              refresh: result.refresh,
+              access: result.access,
+              expires: result.expires,
+            });
+          }
 
           return result;
         },
@@ -195,18 +266,31 @@ export function createEnterpriseFlowMethod({ manager }: MethodDeps) {
           const result = await pollAccessToken(
             urls.accessTokenUrl,
             deviceData.device_code,
-            deviceData.interval,
+            deviceData.interval
           );
 
           if (result.type !== 'success') return result;
 
-          await manager.addAccount({
-            label: domain,
-            host: domain,
-            refresh: result.refresh,
-            access: result.access,
-            expires: result.expires,
-          });
+          const identity = await resolveUserIdentity(domain, result.access);
+          const existing = findExistingAccount(manager, domain, result.refresh, identity);
+          if (existing) {
+            await manager.updateAccountTokens(
+              existing.id,
+              result.access,
+              result.refresh,
+              result.expires
+            );
+          } else {
+            await manager.addAccount({
+              label: domain,
+              host: domain,
+              userId: identity?.userId,
+              username: identity?.username,
+              refresh: result.refresh,
+              access: result.access,
+              expires: result.expires,
+            });
+          }
 
           return {
             ...result,
@@ -217,4 +301,51 @@ export function createEnterpriseFlowMethod({ manager }: MethodDeps) {
       };
     },
   };
+}
+
+export function createManageAccountsMethod({ manager }: MethodDeps) {
+  return {
+    type: 'oauth' as const,
+    label: 'Manage Accounts',
+    async authorize() {
+      await handleManageMenu(manager);
+      return {
+        url: '',
+        instructions: 'Account management complete.',
+        method: 'auto' as const,
+        callback: async () => ({ type: 'failed' as const }),
+      };
+    },
+  };
+}
+
+async function handleManageMenu(manager: CopilotAccountManager): Promise<void> {
+  while (true) {
+    const accounts = toMenuAccounts(manager.listAccounts());
+    const manageAction = await promptManageMenu(accounts);
+    if (manageAction.type === 'back') return;
+    if (manageAction.type === 'remove-all') {
+      for (const account of accounts) {
+        await manager.removeAccount(account.id);
+      }
+      continue;
+    }
+
+    const account = accounts.find((item) => item.id === manageAction.accountId);
+    if (!account) continue;
+
+    const result = await promptAccountAction(account);
+    if (result === 'toggle') {
+      if (account.enabled) {
+        await manager.disableAccount(manageAction.accountId);
+      } else {
+        await manager.enableAccount(manageAction.accountId);
+      }
+      continue;
+    }
+    if (result === 'remove') {
+      await manager.removeAccount(manageAction.accountId);
+      continue;
+    }
+  }
 }

@@ -11,5 +11,6 @@
     "types": ["bun-types"],
     "noUnusedLocals": false,
     "noUnusedParameters": false
-  }
+  },
+  "exclude": ["dist", "node_modules", "reference"]
 }

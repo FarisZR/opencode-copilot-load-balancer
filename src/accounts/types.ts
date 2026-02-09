@@ -2,6 +2,8 @@ export type CopilotAccount = {
   id: string;
   label: string;
   host: string;
+  userId?: string;
+  username?: string;
   refresh: string;
   access: string;
   expires: number;
