@@ -29,4 +29,16 @@ describe('ModelAvailabilityCache', () => {
     await new Promise((resolve) => setTimeout(resolve, 80));
     expect(cache.get(account)).toBeNull();
   });
+
+  it('expires unsupported model markers for unknown accounts', async () => {
+    const cache = new ModelAvailabilityCache(config);
+    cache.markUnsupported(account, 'gpt-5.4');
+
+    expect(cache.get(account)).toBeNull();
+    expect(cache.isUnsupported(account, 'gpt-5.4')).toBe(true);
+
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    expect(cache.isUnsupported(account, 'gpt-5.4')).toBe(false);
+  });
 });

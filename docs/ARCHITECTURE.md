@@ -22,20 +22,21 @@ A custom `fetch` implementation injected into the OpenCode auth hook.
 - **Interception**: It parses the request body to identify the model ID.
 - **Routing**: It calls the Account Manager to select an account and updates the `Authorization` header with that account's access token.
 - **Retries**: If a request fails with a rate limit, it automatically tries a different eligible account (if available).
+- **Model Fallback**: If Copilot says a model is unavailable on the chosen account, it marks that account as unsupported for that model and retries the same request on another eligible account.
 - **Token Refresh**: Automatically handles OAuth token refreshing before making requests.
 
 ### 3. Model Availability Cache (`src/models/availability.ts`)
 
 Tracks which models are supported by which accounts.
 
-- **Lazy Detection**: If an account returns a 404/400 indicating a model is not found, that model is marked as unsupported for that specific account.
+- **Lazy Detection**: If an account returns a 404/400 indicating a model is not available there, that model is marked as unsupported for that specific account.
 - **Filtering**: Future requests for that model will skip the unsupported account.
 
 ### 4. Observability (`src/observe/usage.ts`)
 
 Provides feedback on account usage.
 
-- **Toasts**: Shows a transient UI notification when an agent call is made, identifying the account label.
+- **Toasts**: Shows a transient UI notification when an agent call is made, identifying the account label and fallback reason when the plugin has to stay on a different account.
 - **Structured Logs**: Emits DEBUG level logs via the OpenCode TUI logging system, including the model ID and selection reason.
 - **Headers**: Optionally attaches `x-opencode-copilot-account` to outgoing requests for external debugging.
 
