@@ -118,11 +118,30 @@ export class CopilotAccountManager {
   async markModelUnsupported(id: string, model: string) {
     const account = this.accounts.find((item) => item.id === id);
     if (!account) return;
-    account.models = Array.isArray(account.models)
-      ? account.models.filter((item) => item !== model)
-      : [];
+    if (Array.isArray(account.models)) {
+      account.models = account.models.filter((item) => item !== model);
+    }
     this.availability.markUnsupported(account, model);
     await this.persist();
+  }
+
+  isAccountEligible(
+    account: CopilotAccount,
+    modelId: string,
+    host: string,
+    excludedAccountIds: Set<string> = new Set()
+  ) {
+    if (excludedAccountIds.has(account.id)) return false;
+    if (!account.enabled) return false;
+    if (account.host !== host) return false;
+    if (account.cooldownUntil && account.cooldownUntil > Date.now()) return false;
+    if (this.availability.isUnsupported(account, modelId)) return false;
+
+    const cachedModels = this.availability.get(account);
+    const models = cachedModels ?? account.models ?? null;
+    if (!models || models.length === 0) return true;
+
+    return models.includes(modelId);
   }
 
   async markFailure(id: string, cooldownMs: number) {
@@ -167,15 +186,13 @@ export class CopilotAccountManager {
     };
   }
 
-  selectAccount(modelId: string, host: string): AccountSelection | null {
+  selectAccount(
+    modelId: string,
+    host: string,
+    excludedAccountIds: Set<string> = new Set()
+  ): AccountSelection | null {
     const eligible = this.accounts.filter((account) => {
-      if (!account.enabled) return false;
-      if (account.host !== host) return false;
-      if (account.cooldownUntil && account.cooldownUntil > Date.now()) return false;
-      const cached = this.availability.get(account);
-      const models = cached ?? account.models;
-      if (!models || models.length === 0) return true;
-      return models.includes(modelId);
+      return this.isAccountEligible(account, modelId, host, excludedAccountIds);
     });
 
     if (eligible.length === 0) return null;

@@ -43,4 +43,32 @@ describe('CopilotAccountManager', () => {
     const selection = manager.selectAccount('claude-3', 'github.com');
     expect(selection).toBeNull();
   });
+
+  it('remembers unsupported models for unknown accounts without blocking other models', async () => {
+    const manager = await CopilotAccountManager.load(config, notifier);
+    await manager.addAccount({
+      label: 'work',
+      host: 'github.com',
+      refresh: 'work-refresh',
+      access: 'work-access',
+      expires: 0,
+    });
+    await manager.addAccount({
+      label: 'personal',
+      host: 'github.com',
+      refresh: 'personal-refresh',
+      access: 'personal-access',
+      expires: 0,
+      models: ['gpt-5.4'],
+    });
+
+    const work = manager.listAccounts().find((account) => account.label === 'work');
+    expect(work).toBeDefined();
+
+    await manager.markModelUnsupported(work!.id, 'gpt-5.4');
+
+    expect(manager.isAccountEligible(work!, 'gpt-5.4', 'github.com')).toBe(false);
+    expect(manager.isAccountEligible(work!, 'gpt-4.1', 'github.com')).toBe(true);
+    expect(manager.selectAccount('gpt-5.4', 'github.com')?.account.label).toBe('personal');
+  });
 });

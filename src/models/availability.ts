@@ -1,7 +1,8 @@
 import type { CopilotAccount } from '../accounts/types.ts';
 
 type CacheEntry = {
-  models: string[];
+  models: string[] | null;
+  unsupportedModels: string[];
   expiresAt: number;
 };
 
@@ -20,16 +21,40 @@ export class ModelAvailabilityCache {
     return entry.models;
   }
 
+  isUnsupported(account: CopilotAccount, modelId: string): boolean {
+    const entry = this.cache.get(account.id);
+    if (!entry) return false;
+    if (entry.expiresAt < Date.now()) {
+      this.cache.delete(account.id);
+      return false;
+    }
+    return entry.unsupportedModels.includes(modelId);
+  }
+
   set(account: CopilotAccount, models: string[]) {
     this.cache.set(account.id, {
       models,
+      unsupportedModels: [],
       expiresAt: Date.now() + this.config.modelCacheTtlMs,
     });
   }
 
   markUnsupported(account: CopilotAccount, modelId: string) {
     const entry = this.cache.get(account.id);
-    if (!entry) return;
-    entry.models = entry.models.filter((model) => model !== modelId);
+    if (!entry || entry.expiresAt < Date.now()) {
+      this.cache.set(account.id, {
+        models: null,
+        unsupportedModels: [modelId],
+        expiresAt: Date.now() + this.config.modelCacheTtlMs,
+      });
+      return;
+    }
+
+    if (entry.models) {
+      entry.models = entry.models.filter((model) => model !== modelId);
+    }
+    if (!entry.unsupportedModels.includes(modelId)) {
+      entry.unsupportedModels.push(modelId);
+    }
   }
 }

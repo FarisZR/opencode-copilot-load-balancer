@@ -8,12 +8,13 @@ export type UsageNotifier = {
     account: CopilotAccount,
     modelId: string,
     reason: string,
+    message?: string
   ) => Promise<void>;
 };
 
 export function createUsageNotifier(
   client: OpencodeClient,
-  config: CopilotMultiConfig,
+  config: CopilotMultiConfig
 ): UsageNotifier {
   const log = createLogger('usage');
   let lastToastAt = 0;
@@ -38,15 +39,16 @@ export function createUsageNotifier(
   };
 
   return {
-    async accountSelected(account, modelId, reason) {
+    async accountSelected(account, modelId, reason, message) {
       if (config.visibility.log) {
         log.debug('account selected', {
           label: account.label,
           modelId,
           reason,
+          message,
         });
       }
-      await maybeToast(`Copilot: ${account.label}`);
+      await maybeToast(message ?? `Copilot: ${account.label}`);
     },
   };
 }

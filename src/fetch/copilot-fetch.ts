@@ -105,7 +105,8 @@ function sanitizeCopilotBody(body?: string): string | undefined {
 
 function getHeaderValue(headers: HeadersInit | undefined, key: string): string | undefined {
   if (!headers) return undefined;
-  if (headers instanceof Headers) return headers.get(key) ?? headers.get(key.toLowerCase()) ?? undefined;
+  if (headers instanceof Headers)
+    return headers.get(key) ?? headers.get(key.toLowerCase()) ?? undefined;
   if (Array.isArray(headers)) {
     const found = headers.find(([name]) => name.toLowerCase() === key.toLowerCase());
     return found ? found[1] : undefined;
@@ -119,20 +120,6 @@ function getInitiator(headers: HeadersInit | undefined): Initiator {
   if (!value) return undefined;
   if (value === 'agent' || value === 'user') return value;
   return undefined;
-}
-
-function isAccountEligible(
-  account: { enabled: boolean; host: string; cooldownUntil?: number; models?: string[] },
-  modelId: string,
-  host: string,
-) {
-  if (!account.enabled) return false;
-  if (account.host !== host) return false;
-  if (account.cooldownUntil && account.cooldownUntil > Date.now()) return false;
-  if (Array.isArray(account.models) && account.models.length > 0) {
-    return account.models.includes(modelId);
-  }
-  return true;
 }
 
 function buildHeaders(base: HeadersInit | undefined, auth: string, parsed: ParsedRequest) {
@@ -158,6 +145,34 @@ function getRetryAfter(response: Response, fallback: number) {
     if (!Number.isNaN(parsed) && parsed > 0) return parsed * 1000;
   }
   return fallback;
+}
+
+function isModelUnavailableBody(bodyText: string, modelId: string) {
+  const normalized = bodyText.toLowerCase();
+  const mentionsModel =
+    normalized.includes('model') ||
+    (modelId !== 'unknown' && normalized.includes(modelId.toLowerCase()));
+
+  if (!mentionsModel) return false;
+
+  return [
+    'not found',
+    'does not exist',
+    'not available',
+    'not supported',
+    'unsupported',
+    'no access to model',
+    'access to this model',
+  ].some((phrase) => normalized.includes(phrase));
+}
+
+async function isModelUnavailableResponse(response: Response, modelId: string) {
+  if (response.status !== 400 && response.status !== 404) return false;
+  const bodyText = await response
+    .clone()
+    .text()
+    .catch(() => '');
+  return isModelUnavailableBody(bodyText, modelId);
 }
 
 async function refreshToken(host: string, refresh: string) {
@@ -203,105 +218,150 @@ export function createCopilotFetch({ config, manager, notifier }: FetchDeps) {
     const now = Date.now();
     const lock = lockByHost.get(host);
     const agentRecentlyActive = Boolean(
-      lock?.lastAgentAt && now - lock.lastAgentAt < AGENT_IDLE_TIMEOUT_MS,
+      lock?.lastAgentAt && now - lock.lastAgentAt < AGENT_IDLE_TIMEOUT_MS
     );
+    const attemptedAccountIds = new Set<string>();
+    const resolvedParsed = { ...parsed, isAgent };
+
+    const updateHostLock = (accountId: string) => {
+      const previous = lockByHost.get(host);
+      lockByHost.set(host, {
+        accountId,
+        lastAgentAt: isAgent ? Date.now() : (previous?.lastAgentAt ?? 0),
+      });
+    };
+
+    const prepareSelection = async (
+      selection: NonNullable<ReturnType<typeof manager.selectAccount>>
+    ) => {
+      updateHostLock(selection.account.id);
+
+      if (selection.account.expires > 0 && selection.account.expires < Date.now()) {
+        const refreshed = await refreshToken(host, selection.account.refresh);
+        if (refreshed) {
+          await manager.updateAccountTokens(
+            selection.account.id,
+            refreshed.access,
+            refreshed.refresh,
+            refreshed.expires
+          );
+          selection.account.access = refreshed.access;
+          selection.account.refresh = refreshed.refresh;
+          selection.account.expires = refreshed.expires;
+        }
+      }
+
+      return selection;
+    };
+
+    const buildFallbackMessage = (
+      nextAccountLabel: string,
+      previousAccountLabel: string,
+      message: string
+    ) => {
+      return `Copilot: sticking to ${nextAccountLabel} for ${modelId}; ${previousAccountLabel} ${message}`;
+    };
+
+    const selectFallback = (
+      previousSelection: NonNullable<ReturnType<typeof manager.selectAccount>>,
+      message: string
+    ) => {
+      const fallback = manager.selectAccount(modelId, host, attemptedAccountIds);
+      if (!fallback) return null;
+      return {
+        fallback,
+        message: buildFallbackMessage(
+          fallback.account.label,
+          previousSelection.account.label,
+          message
+        ),
+      };
+    };
 
     let selection = null;
     if (lock && (isAgent || agentRecentlyActive)) {
-      const locked = manager
-        .listAccounts()
-        .find((account) => account.id === lock.accountId && isAccountEligible(account, modelId, host));
+      const locked = manager.listAccounts().find((account) => {
+        return account.id === lock.accountId && manager.isAccountEligible(account, modelId, host);
+      });
       if (locked) {
         selection = { account: locked, index: 0, reason: 'sticky' as const };
       }
     }
 
     if (!selection) {
-      selection = manager.selectAccount(modelId, host);
+      selection = manager.selectAccount(modelId, host, attemptedAccountIds);
     }
     if (!selection) {
       throw new Error(`No eligible Copilot accounts available for ${modelId}`);
     }
 
-    lockByHost.set(host, {
-      accountId: selection.account.id,
-      lastAgentAt: isAgent ? now : lock?.lastAgentAt ?? 0,
-    });
+    let notificationMessage: string | undefined;
 
-    if (selection.account.expires > 0 && selection.account.expires < Date.now()) {
-      const refreshed = await refreshToken(host, selection.account.refresh);
-      if (refreshed) {
-        await manager.updateAccountTokens(
-          selection.account.id,
-          refreshed.access,
-          refreshed.refresh,
-          refreshed.expires,
+    for (;;) {
+      attemptedAccountIds.add(selection.account.id);
+      const preparedSelection = await prepareSelection(selection);
+      const headers = buildHeaders(init?.headers, preparedSelection.account.access, resolvedParsed);
+      const sanitizedBody = sanitizeCopilotBody(init?.body);
+      const response = await fetch(request, {
+        ...init,
+        body: sanitizedBody,
+        headers,
+      });
+
+      if (await isModelUnavailableResponse(response, modelId)) {
+        await manager.markModelUnsupported(preparedSelection.account.id, modelId);
+        log.warn('model unavailable on account', {
+          account: preparedSelection.account.label,
+          modelId,
+        });
+
+        const next = selectFallback(preparedSelection, 'does not support that model');
+        if (!next) return response;
+        selection = next.fallback;
+        notificationMessage = next.message;
+        continue;
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        await manager.markFailure(preparedSelection.account.id, config.rateLimit.defaultBackoffMs);
+        log.warn('auth failure detected', { account: preparedSelection.account.label, modelId });
+
+        const next = selectFallback(preparedSelection, 'had an auth failure');
+        if (!next) return response;
+        selection = next.fallback;
+        notificationMessage = next.message;
+        continue;
+      }
+
+      if (response.status === 429 || response.status === 503) {
+        const backoff = getRetryAfter(response, config.rateLimit.defaultBackoffMs);
+        await manager.markFailure(
+          preparedSelection.account.id,
+          Math.min(backoff, config.rateLimit.maxBackoffMs)
         );
-        selection.account.access = refreshed.access;
-        selection.account.refresh = refreshed.refresh;
-        selection.account.expires = refreshed.expires;
+        log.warn('rate limit detected', { account: preparedSelection.account.label, modelId });
+
+        const next = selectFallback(preparedSelection, 'hit a cooldown-worthy rate limit');
+        if (!next) return response;
+        selection = next.fallback;
+        notificationMessage = next.message;
+        continue;
       }
-    }
 
-    if (isAgent) {
-      await manager.notifySelection(selection, modelId);
-    }
-    const resolvedParsed = { ...parsed, isAgent };
-    const headers = buildHeaders(init?.headers, selection.account.access, resolvedParsed);
-
-    const sanitizedBody = sanitizeCopilotBody(init?.body);
-    const response = await fetch(request, {
-      ...init,
-      body: sanitizedBody,
-      headers,
-    });
-
-    if (response.status === 404 || response.status === 400) {
-      const bodyText = await response
-        .clone()
-        .text()
-        .catch(() => '');
-      if (
-        bodyText.toLowerCase().includes('model') &&
-        bodyText.toLowerCase().includes('not found')
-      ) {
-        await manager.markModelUnsupported(selection.account.id, modelId);
+      await manager.markSuccess(preparedSelection.account.id);
+      if (isAgent) {
+        if (notificationMessage) {
+          await notifier.accountSelected(
+            preparedSelection.account,
+            modelId,
+            'fallback',
+            notificationMessage
+          );
+        } else {
+          await manager.notifySelection(preparedSelection, modelId);
+        }
       }
+      return response;
     }
-
-    if (response.status === 401 || response.status === 403) {
-      await manager.markFailure(selection.account.id, config.rateLimit.defaultBackoffMs);
-      log.warn('auth failure detected', { account: selection.account.label, modelId });
-      const fallback = manager.selectAccount(modelId, host);
-      if (!fallback) return response;
-      await notifier.accountSelected(fallback.account, modelId, 'fallback');
-      lockByHost.set(host, {
-        accountId: fallback.account.id,
-        lastAgentAt: isAgent ? Date.now() : lockByHost.get(host)?.lastAgentAt ?? 0,
-      });
-      const retryHeaders = buildHeaders(init?.headers, fallback.account.access, resolvedParsed);
-      return fetch(request, { ...init, headers: retryHeaders });
-    }
-
-    if (response.status === 429 || response.status === 503) {
-      const backoff = getRetryAfter(response, config.rateLimit.defaultBackoffMs);
-      await manager.markFailure(
-        selection.account.id,
-        Math.min(backoff, config.rateLimit.maxBackoffMs),
-      );
-      log.warn('rate limit detected', { account: selection.account.label, modelId });
-      const fallback = manager.selectAccount(modelId, host);
-      if (!fallback) return response;
-      await notifier.accountSelected(fallback.account, modelId, 'fallback');
-      lockByHost.set(host, {
-        accountId: fallback.account.id,
-        lastAgentAt: isAgent ? Date.now() : lockByHost.get(host)?.lastAgentAt ?? 0,
-      });
-      const retryHeaders = buildHeaders(init?.headers, fallback.account.access, resolvedParsed);
-      return fetch(request, { ...init, headers: retryHeaders });
-    }
-
-    await manager.markSuccess(selection.account.id);
-    return response;
   };
 }
