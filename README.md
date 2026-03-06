@@ -8,6 +8,7 @@ Multi-account GitHub Copilot load balancing for OpenCode. Routes requests across
 - Hybrid load-balancing with cooldowns and fallback
 - Per-request account attribution (toast, log, header)
 - Model availability cache with lazy detection
+- Automatic same-request fallback when a model is only available on some accounts
 
 ## Install
 
@@ -54,6 +55,12 @@ Select **Manage Accounts** from the login menu to:
 ### Multiple Accounts
 
 You can add multiple GitHub.com or Enterprise accounts by running `opencode auth login` and selecting the appropriate login method. The plugin will load-balance requests across all enabled accounts that support the requested model.
+
+### Model-Aware Fallback
+
+When a model is available on only some accounts, the plugin still tries the currently selected account first. If GitHub Copilot responds that the model is unavailable on that account, the plugin marks that account as unsupported for that model, retries the same request against another eligible account, and sticks to the working account for follow-up requests.
+
+For agent requests, the toast/log message explains why the plugin stayed on the fallback account.
 
 ## Configuration
 
