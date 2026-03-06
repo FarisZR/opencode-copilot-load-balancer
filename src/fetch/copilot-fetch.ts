@@ -147,7 +147,7 @@ function getRetryAfter(response: Response, fallback: number) {
   return fallback;
 }
 
-function isModelUnavailableBody(bodyText: string, modelId: string) {
+function isModelUnavailableBody(bodyText: string, modelId: string): boolean {
   const normalized = bodyText.toLowerCase();
   const mentionsModel =
     normalized.includes('model') ||
@@ -166,8 +166,8 @@ function isModelUnavailableBody(bodyText: string, modelId: string) {
   ].some((phrase) => normalized.includes(phrase));
 }
 
-async function isModelUnavailableResponse(response: Response, modelId: string) {
-  if (response.status !== 400 && response.status !== 404) return false;
+async function isModelUnavailableResponse(response: Response, modelId: string): Promise<boolean> {
+  if (response.status !== 400 && response.status !== 403 && response.status !== 404) return false;
   const bodyText = await response
     .clone()
     .text()
@@ -223,17 +223,19 @@ export function createCopilotFetch({ config, manager, notifier }: FetchDeps) {
     const attemptedAccountIds = new Set<string>();
     const resolvedParsed = { ...parsed, isAgent };
 
-    const updateHostLock = (accountId: string) => {
+    const updateHostLock = (accountId: string): void => {
       const previous = lockByHost.get(host);
+      const nextAccountId =
+        !isAgent && agentRecentlyActive && previous ? previous.accountId : accountId;
       lockByHost.set(host, {
-        accountId,
+        accountId: nextAccountId,
         lastAgentAt: isAgent ? Date.now() : (previous?.lastAgentAt ?? 0),
       });
     };
 
     const prepareSelection = async (
       selection: NonNullable<ReturnType<typeof manager.selectAccount>>
-    ) => {
+    ): Promise<NonNullable<ReturnType<typeof manager.selectAccount>>> => {
       updateHostLock(selection.account.id);
 
       if (selection.account.expires > 0 && selection.account.expires < Date.now()) {
@@ -258,14 +260,17 @@ export function createCopilotFetch({ config, manager, notifier }: FetchDeps) {
       nextAccountLabel: string,
       previousAccountLabel: string,
       message: string
-    ) => {
+    ): string => {
       return `Copilot: sticking to ${nextAccountLabel} for ${modelId}; ${previousAccountLabel} ${message}`;
     };
 
     const selectFallback = (
       previousSelection: NonNullable<ReturnType<typeof manager.selectAccount>>,
       message: string
-    ) => {
+    ): {
+      fallback: NonNullable<ReturnType<typeof manager.selectAccount>>;
+      message: string;
+    } | null => {
       const fallback = manager.selectAccount(modelId, host, attemptedAccountIds);
       if (!fallback) return null;
       return {

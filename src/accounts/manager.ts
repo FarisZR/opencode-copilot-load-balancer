@@ -118,9 +118,6 @@ export class CopilotAccountManager {
   async markModelUnsupported(id: string, model: string) {
     const account = this.accounts.find((item) => item.id === id);
     if (!account) return;
-    if (Array.isArray(account.models)) {
-      account.models = account.models.filter((item) => item !== model);
-    }
     this.availability.markUnsupported(account, model);
     await this.persist();
   }
@@ -139,7 +136,8 @@ export class CopilotAccountManager {
 
     const cachedModels = this.availability.get(account);
     const models = cachedModels ?? account.models ?? null;
-    if (!models || models.length === 0) return true;
+    if (!models) return true;
+    if (models.length === 0) return false;
 
     return models.includes(modelId);
   }

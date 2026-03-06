@@ -35,6 +35,19 @@ function createRequest(modelId: string) {
   };
 }
 
+function createUserRequest(modelId: string) {
+  return {
+    method: 'POST',
+    headers: {
+      'x-initiator': 'user',
+    },
+    body: JSON.stringify({
+      model: modelId,
+      messages: [{ role: 'user', content: 'hi' }],
+    }),
+  };
+}
+
 function getAuthorizationHeader(init: unknown) {
   const headers = (init as RequestInit | undefined)?.headers;
   return new Headers(headers).get('authorization');
@@ -136,5 +149,91 @@ describe('createCopilotFetch', () => {
 
     expect(response.status).toBe(404);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats 403 model-unavailable responses as model fallback, not auth failure', async () => {
+    const manager = await CopilotAccountManager.load(config, notifier);
+    await manager.addAccount({
+      label: 'work',
+      host: 'github.com',
+      refresh: 'work-refresh',
+      access: 'work-access',
+      expires: 0,
+    });
+    await manager.addAccount({
+      label: 'personal',
+      host: 'github.com',
+      refresh: 'personal-refresh',
+      access: 'personal-access',
+      expires: 0,
+      models: ['gpt-5.4'],
+    });
+
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('No access to model gpt-5.4 on this account', { status: 403 })
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const fetcher = createCopilotFetch({ config, manager, notifier });
+    const response = await fetcher(
+      'https://copilot-api.github.com/v1/chat/completions',
+      createRequest('gpt-5.4')
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(getAuthorizationHeader(fetchSpy.mock.calls[1]?.[1])).toBe('Bearer personal-access');
+    expect(notifier.accountSelected).toHaveBeenCalledWith(
+      expect.objectContaining({ label: 'personal' }),
+      'gpt-5.4',
+      'fallback',
+      'Copilot: sticking to personal for gpt-5.4; work does not support that model'
+    );
+  });
+
+  it('keeps the recent agent lock when a user request hits another account', async () => {
+    const manager = await CopilotAccountManager.load(config, notifier);
+    await manager.addAccount({
+      label: 'work',
+      host: 'github.com',
+      refresh: 'work-refresh',
+      access: 'work-access',
+      expires: 0,
+    });
+    await manager.addAccount({
+      label: 'personal',
+      host: 'github.com',
+      refresh: 'personal-refresh',
+      access: 'personal-access',
+      expires: 0,
+      models: ['gpt-5.4'],
+    });
+
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('Model gpt-5.4 is not supported on this account', { status: 404 })
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const fetcher = createCopilotFetch({ config, manager, notifier });
+
+    await fetcher('https://copilot-api.github.com/v1/chat/completions', createRequest('gpt-5.4'));
+    await fetcher(
+      'https://copilot-api.github.com/v1/chat/completions',
+      createUserRequest('gpt-4.1')
+    );
+    await fetcher('https://copilot-api.github.com/v1/chat/completions', createRequest('gpt-5.4'));
+
+    expect(getAuthorizationHeader(fetchSpy.mock.calls[0]?.[1])).toBe('Bearer work-access');
+    expect(getAuthorizationHeader(fetchSpy.mock.calls[1]?.[1])).toBe('Bearer personal-access');
+    expect(getAuthorizationHeader(fetchSpy.mock.calls[2]?.[1])).toBe('Bearer work-access');
+    expect(getAuthorizationHeader(fetchSpy.mock.calls[3]?.[1])).toBe('Bearer personal-access');
   });
 });

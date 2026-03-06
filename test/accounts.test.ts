@@ -71,4 +71,40 @@ describe('CopilotAccountManager', () => {
     expect(manager.isAccountEligible(work!, 'gpt-4.1', 'github.com')).toBe(true);
     expect(manager.selectAccount('gpt-5.4', 'github.com')?.account.label).toBe('personal');
   });
+
+  it('keeps persisted model lists unchanged when marking a model unsupported', async () => {
+    const manager = await CopilotAccountManager.load(config, notifier);
+    await manager.addAccount({
+      label: 'personal',
+      host: 'github.com',
+      refresh: 'personal-refresh',
+      access: 'personal-access',
+      expires: 0,
+      models: ['gpt-5.4'],
+    });
+
+    const personal = manager.listAccounts()[0];
+    expect(personal?.models).toEqual(['gpt-5.4']);
+
+    await manager.markModelUnsupported(personal!.id, 'gpt-5.4');
+
+    expect(manager.listAccounts()[0]?.models).toEqual(['gpt-5.4']);
+    expect(manager.isAccountEligible(personal!, 'gpt-5.4', 'github.com')).toBe(false);
+  });
+
+  it('treats an explicit empty model list as supports nothing', async () => {
+    const manager = await CopilotAccountManager.load(config, notifier);
+    await manager.addAccount({
+      label: 'empty',
+      host: 'github.com',
+      refresh: 'empty-refresh',
+      access: 'empty-access',
+      expires: 0,
+      models: [],
+    });
+
+    const empty = manager.listAccounts()[0];
+    expect(manager.isAccountEligible(empty!, 'gpt-5.4', 'github.com')).toBe(false);
+    expect(manager.selectAccount('gpt-5.4', 'github.com')).toBeNull();
+  });
 });
