@@ -122,17 +122,22 @@ function getInitiator(headers: HeadersInit | undefined): Initiator {
 }
 
 function isAccountEligible(
-  account: { enabled: boolean; host: string; cooldownUntil?: number; models?: string[] },
+  account: {
+    enabled: boolean;
+    host: string;
+    cooldownUntil?: number;
+    models?: string[];
+    unsupportedModels?: string[];
+  },
   modelId: string,
   host: string,
 ) {
   if (!account.enabled) return false;
   if (account.host !== host) return false;
   if (account.cooldownUntil && account.cooldownUntil > Date.now()) return false;
-  if (Array.isArray(account.models) && account.models.length > 0) {
-    return account.models.includes(modelId);
-  }
-  return true;
+  if (modelId === 'unknown') return true;
+  if (Array.isArray(account.models)) return account.models.includes(modelId);
+  return !account.unsupportedModels?.includes(modelId);
 }
 
 function buildHeaders(base: HeadersInit | undefined, auth: string, parsed: ParsedRequest) {

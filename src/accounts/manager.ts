@@ -118,9 +118,13 @@ export class CopilotAccountManager {
   async markModelUnsupported(id: string, model: string) {
     const account = this.accounts.find((item) => item.id === id);
     if (!account) return;
-    account.models = Array.isArray(account.models)
-      ? account.models.filter((item) => item !== model)
-      : [];
+    if (Array.isArray(account.models)) {
+      account.models = account.models.filter((item) => item !== model);
+    } else {
+      const unsupported = new Set(account.unsupportedModels ?? []);
+      unsupported.add(model);
+      account.unsupportedModels = [...unsupported];
+    }
     this.availability.markUnsupported(account, model);
     await this.persist();
   }
@@ -172,10 +176,11 @@ export class CopilotAccountManager {
       if (!account.enabled) return false;
       if (account.host !== host) return false;
       if (account.cooldownUntil && account.cooldownUntil > Date.now()) return false;
+      if (modelId === 'unknown') return true;
       const cached = this.availability.get(account);
       const models = cached ?? account.models;
-      if (!models || models.length === 0) return true;
-      return models.includes(modelId);
+      if (Array.isArray(models)) return models.includes(modelId);
+      return !account.unsupportedModels?.includes(modelId);
     });
 
     if (eligible.length === 0) return null;

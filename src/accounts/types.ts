@@ -9,6 +9,7 @@ export type CopilotAccount = {
   expires: number;
   enabled: boolean;
   models?: string[];
+  unsupportedModels?: string[];
   lastUsed?: number;
   cooldownUntil?: number;
   consecutiveFailures?: number;

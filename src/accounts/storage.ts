@@ -18,6 +18,7 @@ const StoreSchema = z.object({
         expires: z.number(),
         enabled: z.boolean().optional().default(true),
         models: z.array(z.string()).optional(),
+        unsupportedModels: z.array(z.string()).optional(),
         lastUsed: z.number().optional(),
         cooldownUntil: z.number().optional(),
         consecutiveFailures: z.number().optional(),
