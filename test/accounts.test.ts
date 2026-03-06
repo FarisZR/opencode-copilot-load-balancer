@@ -82,8 +82,9 @@ describe('CopilotAccountManager', () => {
       models: ['gpt-5-mini'],
     });
 
-    const account = manager.listAccounts()[0];
-    await manager.markModelUnsupported(account.id, 'gpt-5-mini');
+    const account = manager.listAccounts().find((item) => item.label === 'github.com');
+    expect(account).toBeDefined();
+    await manager.markModelUnsupported(account!.id, 'gpt-5-mini');
 
     const selection = manager.selectAccount('gpt-5-mini', 'github.com');
     expect(selection).toBeNull();
